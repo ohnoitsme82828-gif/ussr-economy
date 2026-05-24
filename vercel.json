@@ -3,7 +3,6 @@
   "devCommand": "npm run dev",
   "outputDirectory": ".next/standalone",
   "framework": "nextjs",
-  "nodeVersion": "18.x",
   "env": {
     "NODE_ENV": "production"
   },
