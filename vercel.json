@@ -1,0 +1,25 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "outputDirectory": ".next/standalone",
+  "framework": "nextjs",
+  "nodeVersion": "18.x",
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "app/api/**": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/scheduled/salary",
+      "schedule": "0 0 * * 1"
+    },
+    {
+      "path": "/api/scheduled/leaderboard",
+      "schedule": "1 0 * * 1"
+    }
+  ]
+}

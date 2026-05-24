@@ -3,10 +3,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    // Remove if not using Server Components
-    serverComponentsExternalPackages: ['mongodb'],
-  },
   webpack(config, { dev }) {
     if (dev) {
       // Reduce CPU/memory from file watching
@@ -17,6 +13,9 @@ const nextConfig = {
       };
     }
     return config;
+  },
+  turbopack: {
+    // Enable Turbopack with webpack config compatibility
   },
   onDemandEntries: {
     maxInactiveAge: 10000,
