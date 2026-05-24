@@ -309,3 +309,5 @@ Built with modern web technologies:
 ---
 
 **For the Glory of the Motherland! 🚩**
+#   u s s r - e c o n o m y  
+ 
