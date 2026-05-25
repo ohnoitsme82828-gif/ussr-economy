@@ -1,8 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
-  // Prevent monorepo detection
-  productionBrowserSourceMaps: false,
+  // Use default output for Vercel - no standalone needed
+  // Vercel handles the deployment correctly with standard Next.js output
 };
 
 module.exports = nextConfig;
