@@ -1,0 +1,12 @@
+.git
+.gitignore
+README.md
+DEPLOYMENT_GUIDE.md
+IMPLEMENTATION_SUMMARY.md
+QUICK_START.md
+test_result.md
+backend_test.py
+tests/
+memory/
+.next
+node_modules
