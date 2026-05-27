@@ -154,24 +154,32 @@ async function getConfigValue(key, defaultValue) {
 
 // POST /api/auth/register
 async function handleRegister(request) {
-  await ensureDbInitialized();
-  
-  const body = await request.json();
-  const { username, password } = body;
-
-  if (!username || !password) {
-    return NextResponse.json({ error: 'Username and password required' }, { status: 400 });
-  }
-
-  if (username.length < 3 || username.length > 50) {
-    return NextResponse.json({ error: 'Username must be 3-50 characters' }, { status: 400 });
-  }
-
-  if (password.length < 6) {
-    return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
-  }
-
   try {
+    await ensureDbInitialized();
+  } catch (error) {
+    console.error('Database initialization error during registration:', error);
+    return NextResponse.json({
+      error: 'Database initialization failed',
+      message: error?.message || 'Failed to initialize database'
+    }, { status: 500 });
+  }
+  
+  try {
+    const body = await request.json();
+    const { username, password } = body;
+
+    if (!username || !password) {
+      return NextResponse.json({ error: 'Username and password required' }, { status: 400 });
+    }
+
+    if (username.length < 3 || username.length > 50) {
+      return NextResponse.json({ error: 'Username must be 3-50 characters' }, { status: 400 });
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+    }
+
     // Check if username exists
     const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
     if (existing.rows.length > 0) {
@@ -227,27 +235,39 @@ async function handleRegister(request) {
 
   } catch (error) {
     console.error('Registration error:', error);
-    return NextResponse.json({ error: 'Registration failed' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Registration failed',
+      message: error?.message || 'Unknown error during registration'
+    }, { status: 500 });
   }
 }
 
 // POST /api/auth/login
 async function handleLogin(request) {
-  await ensureDbInitialized();
-  
-  const body = await request.json();
-  const { username, password } = body;
-
-  if (!username || !password) {
-    return NextResponse.json({ error: 'Username and password required' }, { status: 400 });
-  }
-
-  // Rate limiting
-  if (!checkRateLimit(username, 'login')) {
-    return NextResponse.json({ error: 'Too many login attempts. Try again later.' }, { status: 429 });
+  try {
+    await ensureDbInitialized();
+  } catch (error) {
+    console.error('Database initialization error during login:', error);
+    return NextResponse.json({
+      error: 'Database initialization failed',
+      message: error?.message || 'Failed to initialize database'
+    }, { status: 500 });
   }
 
   try {
+    const body = await request.json();
+    const { username, password } = body;
+
+    if (!username || !password) {
+      return NextResponse.json({ error: 'Username and password required' }, { status: 400 });
+    }
+
+    // Rate limiting
+    const rateLimitOk = await checkRateLimit(username, 'login');
+    if (!rateLimitOk) {
+      return NextResponse.json({ error: 'Too many login attempts. Try again later.' }, { status: 429 });
+    }
+
     // Get user
     const result = await pool.query(
       `SELECT u.*, r.name as role_name 
@@ -300,7 +320,41 @@ async function handleLogin(request) {
 
   } catch (error) {
     console.error('Login error:', error);
-    return NextResponse.json({ error: 'Login failed' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Login failed',
+      message: error?.message || 'Unknown error during login'
+    }, { status: 500 });
+  }
+}
+
+// GET /api/health - Health check endpoint
+async function handleHealth(request) {
+  try {
+    // Test database connection
+    const dbTest = await pool.query('SELECT NOW() as current_time');
+    
+    return NextResponse.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: !!dbTest.rows.length,
+        time: dbTest.rows[0]?.current_time
+      },
+      environment: {
+        node_env: process.env.NODE_ENV,
+        database_url_set: !!process.env.DATABASE_URL,
+        jwt_secret_set: !!process.env.JWT_SECRET,
+        admin_username_set: !!process.env.INITIAL_ADMIN_USERNAME,
+        admin_password_set: !!process.env.INITIAL_ADMIN_PASSWORD,
+      }
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    return NextResponse.json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }, { status: 503 });
   }
 }
 
@@ -376,7 +430,8 @@ async function handleTransfer(request) {
   }
 
   // Rate limiting
-  if (!checkRateLimit(user.id, 'transfer')) {
+  const transferRateLimitOk = await checkRateLimit(user.id, 'transfer');
+  if (!transferRateLimitOk) {
     return NextResponse.json({ error: 'Transfer limit exceeded. Please wait.' }, { status: 429 });
   }
 
@@ -514,7 +569,8 @@ async function handleConvert(request) {
   }
 
   // Rate limiting
-  if (!checkRateLimit(user.id, 'conversion')) {
+  const conversionRateLimitOk = await checkRateLimit(user.id, 'conversion');
+  if (!conversionRateLimitOk) {
     return NextResponse.json({ error: 'Conversion limit exceeded. Please wait.' }, { status: 429 });
   }
 
@@ -612,7 +668,8 @@ async function handlePurchase(request) {
   }
 
   // Rate limiting
-  if (!checkRateLimit(user.id, 'purchase')) {
+  const purchaseRateLimitOk = await checkRateLimit(user.id, 'purchase');
+  if (!purchaseRateLimitOk) {
     return NextResponse.json({ error: 'Purchase limit exceeded. Please wait.' }, { status: 429 });
   }
 
@@ -1319,48 +1376,65 @@ async function handleAdminGetAuditLogs(request) {
 
 // Main request handler
 export async function GET(request) {
-  const url = new URL(request.url);
-  const path = url.pathname.replace('/api/', '');
+  try {
+    const url = new URL(request.url);
+    const path = url.pathname.replace('/api/', '');
 
-  console.log('GET', path);
+    console.log('GET', path);
 
-  if (path === 'auth/me') return handleGetMe(request);
-  if (path === 'roles') return handleGetRoles(request);
-  if (path === 'marketplace') return handleGetMarketplace(request);
-  if (path === 'leaderboard') return handleGetLeaderboard(request);
-  if (path === 'transactions') return handleGetTransactions(request);
-  if (path === 'notifications') return handleGetNotifications(request);
-  if (path === 'admin/users') return handleAdminGetUsers(request);
-  if (path === 'admin/transactions') return handleAdminGetTransactions(request);
-  if (path === 'admin/config') return handleAdminGetConfig(request);
-  if (path === 'admin/audit-logs') return handleAdminGetAuditLogs(request);
+    if (path === 'health') return await handleHealth(request);
+    if (path === 'auth/me') return await handleGetMe(request);
+    if (path === 'roles') return await handleGetRoles(request);
+    if (path === 'marketplace') return await handleGetMarketplace(request);
+    if (path === 'leaderboard') return await handleGetLeaderboard(request);
+    if (path === 'transactions') return await handleGetTransactions(request);
+    if (path === 'notifications') return await handleGetNotifications(request);
+    if (path === 'admin/users') return await handleAdminGetUsers(request);
+    if (path === 'admin/transactions') return await handleAdminGetTransactions(request);
+    if (path === 'admin/config') return await handleAdminGetConfig(request);
+    if (path === 'admin/audit-logs') return await handleAdminGetAuditLogs(request);
 
-  return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (error) {
+    console.error('GET handler error:', error);
+    return NextResponse.json({
+      error: 'Internal server error',
+      message: error?.message || 'Unknown error'
+    }, { status: 500 });
+  }
 }
 
 export async function POST(request) {
-  const url = new URL(request.url);
-  const path = url.pathname.replace('/api/', '');
+  try {
+    const url = new URL(request.url);
+    const path = url.pathname.replace('/api/', '');
 
-  console.log('POST', path);
+    console.log('POST', path);
 
-  if (path === 'auth/register') return handleRegister(request);
-  if (path === 'auth/login') return handleLogin(request);
-  if (path === 'transfer') return handleTransfer(request);
-  if (path === 'convert') return handleConvert(request);
-  if (path === 'marketplace/purchase') return handlePurchase(request);
-  if (path === 'notifications/read') return handleMarkNotificationRead(request);
-  if (path === 'admin/users/freeze') return handleAdminFreezeUser(request);
-  if (path === 'admin/users/unfreeze') return handleAdminUnfreezeUser(request);
-  if (path === 'admin/users/ban') return handleAdminBanUser(request);
-  if (path === 'admin/users/assign-role') return handleAdminAssignRole(request);
-  if (path === 'admin/roles/create') return handleAdminCreateRole(request);
-  if (path === 'admin/roles/update') return handleAdminUpdateRole(request);
-  if (path === 'admin/treasury/inject') return handleAdminInjectMoney(request);
-  if (path === 'admin/salary/distribute') return handleAdminDistributeSalary(request);
-  if (path === 'admin/config/update') return handleAdminUpdateConfig(request);
-  if (path === 'admin/marketplace/create') return handleAdminCreateItem(request);
-  if (path === 'admin/marketplace/update') return handleAdminUpdateItem(request);
+    if (path === 'auth/register') return await handleRegister(request);
+    if (path === 'auth/login') return await handleLogin(request);
+    if (path === 'transfer') return await handleTransfer(request);
+    if (path === 'convert') return await handleConvert(request);
+    if (path === 'marketplace/purchase') return await handlePurchase(request);
+    if (path === 'notifications/read') return await handleMarkNotificationRead(request);
+    if (path === 'admin/users/freeze') return await handleAdminFreezeUser(request);
+    if (path === 'admin/users/unfreeze') return await handleAdminUnfreezeUser(request);
+    if (path === 'admin/users/ban') return await handleAdminBanUser(request);
+    if (path === 'admin/users/assign-role') return await handleAdminAssignRole(request);
+    if (path === 'admin/roles/create') return await handleAdminCreateRole(request);
+    if (path === 'admin/roles/update') return await handleAdminUpdateRole(request);
+    if (path === 'admin/treasury/inject') return await handleAdminInjectMoney(request);
+    if (path === 'admin/salary/distribute') return await handleAdminDistributeSalary(request);
+    if (path === 'admin/config/update') return await handleAdminUpdateConfig(request);
+    if (path === 'admin/marketplace/create') return await handleAdminCreateItem(request);
+    if (path === 'admin/marketplace/update') return await handleAdminUpdateItem(request);
 
-  return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (error) {
+    console.error('POST handler error:', error);
+    return NextResponse.json({
+      error: 'Internal server error',
+      message: error?.message || 'Unknown error'
+    }, { status: 500 });
+  }
 }

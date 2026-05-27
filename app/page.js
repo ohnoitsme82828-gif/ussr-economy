@@ -77,18 +77,51 @@ export default function App() {
       ...(token && { Authorization: `Bearer ${token}` }),
     };
 
-    const response = await fetch(`/api/${endpoint}`, {
-      ...options,
-      headers: { ...headers, ...options.headers },
-    });
+    try {
+      const response = await fetch(`/api/${endpoint}`, {
+        ...options,
+        headers: { ...headers, ...options.headers },
+      });
 
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.error || 'Request failed');
+      // Check if response has content
+      const contentType = response.headers.get('content-type');
+      const contentLength = response.headers.get('content-length');
+
+      if (!contentType?.includes('application/json')) {
+        console.error('Invalid content type:', contentType);
+        throw new Error('Server returned non-JSON response');
+      }
+
+      if (response.status === 204 || contentLength === '0') {
+        // No content response
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        return { success: true };
+      }
+
+      let data;
+      try {
+        const text = await response.text();
+        if (!text) {
+          console.error('Empty response body for endpoint:', endpoint);
+          throw new Error('Server returned empty response');
+        }
+        data = JSON.parse(text);
+      } catch (parseError) {
+        console.error('JSON parse error for endpoint:', endpoint, parseError);
+        throw new Error(`Invalid JSON response: ${parseError.message}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `Request failed with status ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`API call failed for ${endpoint}:`, error);
+      throw error;
     }
-
-    return data;
   };
 
   const fetchUserData = async (authToken) => {
@@ -99,10 +132,26 @@ export default function App() {
         Authorization: `Bearer ${tempToken}`,
       };
       const response = await fetch('/api/auth/me', { headers });
-      const data = await response.json();
-      if (response.ok) {
+      
+      if (!response.ok) {
+        console.error('Failed to fetch user, status:', response.status);
+        logout();
+        return;
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse user response:', parseError);
+        logout();
+        return;
+      }
+
+      if (data && data.user) {
         setUser(data.user);
       } else {
+        console.error('Invalid user response format:', data);
         logout();
       }
     } catch (error) {
