@@ -235,10 +235,12 @@ async function handleRegister(request) {
 
   } catch (error) {
     console.error('Registration error:', error);
-    return NextResponse.json({
+    const payload = {
       error: 'Registration failed',
       message: error?.message || 'Unknown error during registration'
-    }, { status: 500 });
+    };
+    if (process.env.VERBOSE_ERRORS === 'true') payload.stack = error?.stack;
+    return NextResponse.json(payload, { status: 500 });
   }
 }
 
@@ -320,10 +322,12 @@ async function handleLogin(request) {
 
   } catch (error) {
     console.error('Login error:', error);
-    return NextResponse.json({
+    const payload = {
       error: 'Login failed',
       message: error?.message || 'Unknown error during login'
-    }, { status: 500 });
+    };
+    if (process.env.VERBOSE_ERRORS === 'true') payload.stack = error?.stack;
+    return NextResponse.json(payload, { status: 500 });
   }
 }
 
