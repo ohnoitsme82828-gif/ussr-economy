@@ -155,7 +155,9 @@ async function getConfigValue(key, defaultValue) {
 // POST /api/auth/register
 async function handleRegister(request) {
   try {
+    console.log('handleRegister: ensuring DB initialized');
     await ensureDbInitialized();
+    console.log('handleRegister: DB initialized');
   } catch (error) {
     console.error('Database initialization error during registration:', error);
     return NextResponse.json({
@@ -165,8 +167,12 @@ async function handleRegister(request) {
   }
   
   try {
+    console.log('handleRegister: parsing body');
     const body = await request.json();
+    console.log('handleRegister: body parsed');
     const { username, password } = body;
+
+    console.log('handleRegister: username=', username);
 
     if (!username || !password) {
       return NextResponse.json({ error: 'Username and password required' }, { status: 400 });
